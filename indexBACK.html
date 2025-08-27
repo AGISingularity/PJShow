@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Quest WebXR – Aircraft Walkthrough</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>html,body{margin:0;height:100%;overflow:hidden;}#help{position:fixed;left:10px;top:10px;font:14px/1.4 system-ui;background:#0008;color:#fff;padding:8px 10px;border-radius:8px}</style>
+</head>
+<body>
+<div id="help">
+  Left stick: move • Right stick: snap turn • Grip+A: recenter<br>
+  This scene expects meters. If your jet was authored in cm, increase <em>modelScale</em>.
+</div>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js";
+import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/VRButton.js";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js";
+import { XRControllerModelFactory } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/XRControllerModelFactory.js";
+
+let scene, camera, renderer, rig, floor;
+let modelRoot = new THREE.Group();
+let modelScale = 1.0;      // set to 0.01 if your model is in cm
+let snapTurnDeg = 45;
+
+init(); animate();
+
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202225);
+
+  // Lighting
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x404040, 1.0);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+  dir.position.set(10, 20, 10);
+  scene.add(dir);
+
+  // Camera & rig (rig = player root we move/rotate)
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 500);
+  rig = new THREE.Group();
+  rig.add(camera);
+  scene.add(rig);
+
+  // Floor
+  const floorGeo = new THREE.PlaneGeometry(200, 200);
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x303338, metalness: 0, roughness: 1 });
+  floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI/2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Model root
+  scene.add(modelRoot);
+
+  // Renderer + WebXR
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  document.body.appendChild(renderer.domElement);
+  document.body.appendChild(VRButton.createButton(renderer));
+
+  // Controllers (for pointers / snap-turn timing)
+  const controllerModelFactory = new XRControllerModelFactory();
+  const grip0 = renderer.xr.getControllerGrip(0);
+  grip0.add(controllerModelFactory.createControllerModel(grip0));
+  scene.add(grip0);
+  const grip1 = renderer.xr.getControllerGrip(1);
+  grip1.add(controllerModelFactory.createControllerModel(grip1));
+  scene.add(grip1);
+
+  // Load a GLB
+  const loader = new GLTFLoader();
+  // CHANGE THIS PATH to your model or a URL:
+  const MODEL_URL = "aircraft.glb";
+  loader.load(MODEL_URL, (gltf) => {
+    modelRoot.clear();
+    const obj = gltf.scene;
+    obj.scale.setScalar(modelScale);
+    modelRoot.add(obj);
+    recenterToFloor(obj);
+  }, undefined, (e)=>console.error("GLB load error:", e));
+
+  window.addEventListener('resize', onWindowResize);
+}
+
+// Recenter model so its min Y sits on floor at world origin
+function recenterToFloor(root) {
+  const bbox = new THREE.Box3().setFromObject(root);
+  const size = bbox.getSize(new THREE.Vector3());
+  const center = bbox.getCenter(new THREE.Vector3());
+  const offset = new THREE.Vector3(-center.x, -bbox.min.y, -center.z);
+  root.position.add(offset);
+  // Start player ~1m in front-left of model
+  rig.position.set(1.0, 0.0, 1.5);
+}
+
+// Simple locomotion: left stick move, right stick snap turn
+let lastSnapTime = 0;
+function animate(t) {
+  handleGamepads(t);
+  renderer.setAnimationLoop(render);
+}
+
+function render() { renderer.render(scene, camera); }
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function handleGamepads(timeMs) {
+  const session = renderer.xr.getSession();
+  if (!session) return;
+
+  const gpList = navigator.getGamepads ? navigator.getGamepads() : [];
+  // Quest usually maps: left = index 0, right = index 1
+  const left = gpList[0];
+  const right = gpList[1];
+
+  // Left stick move
+  if (left && left.axes) {
+    const [lx, ly] = guessStick(left.axes);
+    const speed = 1.5; // meters/sec
+    const dt = renderer.clock ? renderer.clock.getDelta() : 1/72;
+    // Move relative to headset yaw
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    const yaw = Math.atan2(dir.x, dir.z);
+    const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const rightV = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), forward).negate();
+    rig.position.addScaledVector(forward, -ly * speed * dt);
+    rig.position.addScaledVector(rightV,  -lx * speed * dt);
+    // keep feet on floor
+    rig.position.y = 0;
+  }
+
+  // Right stick snap turn
+  const turnCooldown = 180; // ms
+  if (right && right.axes) {
+    const [rx] = guessStick(right.axes);
+    if (Math.abs(rx) > 0.6) {
+      const now = (typeof timeMs === 'number') ? timeMs : performance.now();
+      if (now - lastSnapTime > turnCooldown) {
+        const sign = rx > 0 ? -1 : 1; // world Z forward
+        rig.rotateY(sign * THREE.MathUtils.degToRad(snapTurnDeg));
+        lastSnapTime = now;
+      }
+    }
+  }
+
+  // Recenter (Grip+A)
+  if (right && right.buttons && left && left.buttons) {
+    const grip = right.buttons[1]?.pressed || right.buttons[2]?.pressed; // varies by mapping
+    const aBtn = right.buttons[4]?.pressed || left.buttons[4]?.pressed;
+    if (grip && aBtn) rig.position.set(0,0,0);
+  }
+}
+
+// Try to normalize stick axes across browsers/devices
+function guessStick(axes) {
+  // Common mappings:
+  // [0,1] or [2,3] for primary stick.
+  if (axes.length >= 4 && (Math.abs(axes[2]) + Math.abs(axes[3])) > (Math.abs(axes[0]) + Math.abs(axes[1]))) {
+    return [axes[2], axes[3]];
+  }
+  return [axes[0] ?? 0, axes[1] ?? 0];
+}
+</script>
+</body>
+</html>
