@@ -6,16 +6,21 @@
 #hud{position:fixed;left:8px;top:8px;background:#000c;color:#fff;padding:8px 10px;border-radius:8px;font:12px system-ui;white-space:pre-wrap;z-index:9}</style>
 </head><body>
 <div id="hud">Booting…</div>
+
 <script>
-const hud = document.getElementById('hud'); function log(...a){ hud.textContent += "\n"+a.join(" "); }
+const hud = document.getElementById('hud');
+function log(...a){ hud.textContent += "\n"+a.join(" "); }
+hud.textContent = `HTTPS: ${location.protocol}\nTime: ${new Date().toLocaleString()}`;
 </script>
+
 <script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js?v=2";
-import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/VRButton.js?v=2";
-import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js?v=2";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165/build/three.module.js";
+import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/webxr/VRButton.js";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/loaders/GLTFLoader.js";
 
 function log(...a){ document.getElementById('hud').textContent += "\n"+a.join(" "); }
 
+// Scene & renderer
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x202225);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.0));
 const dl = new THREE.DirectionalLight(0xffffff,1); dl.position.set(10,20,10); scene.add(dl);
@@ -24,28 +29,29 @@ const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 100
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
 renderer.xr.enabled = true; document.body.appendChild(renderer.domElement);
-document.body.appendChild(VRButton.createButton(renderer));
-log("VRButton added ✔");
+document.body.appendChild(VRButton.createButton(renderer)); log("VRButton added ✔");
 
+// Helpers
 const grid = new THREE.GridHelper(200,200); grid.position.y=0; scene.add(grid);
 
+// Loader
 const loader = new GLTFLoader(), root = new THREE.Group(); scene.add(root);
 
-// KNOWN-GOOD REMOTE MODEL (Khronos sample)
-const MODEL_URL = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb?v=2";
+// First: known-good remote model to prove loading works
+// const MODEL_URL = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb?v=2";
+
+// Then switch to your file in the repo root:
+const MODEL_URL = "./jet.glb?v=3";   // if in /models use "./models/jet.glb?v=3"
 
 log("Loading:", MODEL_URL);
 loader.load(MODEL_URL, (gltf)=>{
   log("Loaded OK");
   const obj = gltf.scene; obj.scale.setScalar(1.0); root.add(obj);
   const bbox = new THREE.Box3().setFromObject(obj), c = bbox.getCenter(new THREE.Vector3());
-  obj.position.add(new THREE.Vector3(-c.x, -bbox.min.y, -c.z)); // sit on floor at origin
-  log("Bounds:", JSON.stringify(bbox.getSize(new THREE.Vector3())));
-}, (ev)=>{
-  log("Progress:", ev.total? Math.round(ev.loaded/ev.total*100)+"%": (ev.loaded+" bytes"));
-}, (err)=>{
-  log("GLB load error:", err?.message||err);
-});
+  obj.position.add(new THREE.Vector3(-c.x, -bbox.min.y, -c.z));
+  const s = bbox.getSize(new THREE.Vector3()); log(`Bounds: ${s.x.toFixed(2)} x ${s.y.toFixed(2)} x ${s.z.toFixed(2)} m`);
+}, (ev)=>{ log("Progress:", ev.total? Math.round(ev.loaded/ev.total*100)+"%": (ev.loaded+" bytes")); },
+    (err)=>{ log("GLB load error:", err?.message||err); });
 
 addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 renderer.setAnimationLoop(()=>renderer.render(scene,camera));
