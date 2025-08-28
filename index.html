@@ -1,11 +1,22 @@
 <!doctype html>
 <html lang="en"><head>
-<meta charset="utf-8"><title>WebXR Jet Loader</title>
+<meta charset="utf-8">
+<title>WebXR Jet Loader</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#202225}
 #hud{position:fixed;left:8px;top:8px;background:#000c;color:#fff;padding:8px 10px;border-radius:8px;font:12px system-ui;white-space:pre-wrap;z-index:9}</style>
-</head><body>
+</head>
+<body>
 <div id="hud">Booting…</div>
+
+<!-- IMPORT MAP: resolves the bare specifier "three" used by GLTFLoader.js -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js"
+  }
+}
+</script>
 
 <script>
 const hud = document.getElementById('hud');
@@ -14,9 +25,9 @@ hud.textContent = `HTTPS: ${location.protocol}\nTime: ${new Date().toLocaleStrin
 </script>
 
 <script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165/build/three.module.js";
-import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/webxr/VRButton.js";
-import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/loaders/GLTFLoader.js";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js?v=2";
+import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/VRButton.js?v=2";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js?v=2";
 
 function log(...a){ document.getElementById('hud').textContent += "\n"+a.join(" "); }
 
@@ -37,11 +48,10 @@ const grid = new THREE.GridHelper(200,200); grid.position.y=0; scene.add(grid);
 // Loader
 const loader = new GLTFLoader(), root = new THREE.Group(); scene.add(root);
 
-// First: known-good remote model to prove loading works
+// Use your file in repo root (or adjust to ./models/jet.glb)
+const MODEL_URL = "./jet.glb?v=3";
+// (If you want to sanity-check loading first, try the Khronos sample instead:)
 // const MODEL_URL = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb?v=2";
-
-// Then switch to your file in the repo root:
-const MODEL_URL = "./jet.glb?v=3";   // if in /models use "./models/jet.glb?v=3"
 
 log("Loading:", MODEL_URL);
 loader.load(MODEL_URL, (gltf)=>{
