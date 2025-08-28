@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8">
+<title>WebXR Probe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<div id="hud" style="position:fixed;left:8px;top:8px;background:#000c;color:#fff;padding:8px;border-radius:8px;font:12px system-ui;white-space:pre-wrap;z-index:9">Booting…</div>
+<script>
+const hud = document.getElementById('hud');
+function log(...a){ hud.textContent += "\n"+a.join(" "); }
+hud.textContent = `HTTPS: ${location.protocol}\nTime: ${new Date().toLocaleString()}`;
+(async()=>{
+  const hasXR = !!navigator.xr; let ok=false, err='';
+  try { ok = hasXR && await navigator.xr.isSessionSupported('immersive-vr'); } catch(e){ err=String(e); }
+  log("navigator.xr:", hasXR, "immersive-vr:", ok, err?("err:"+err):"");
+})();
+</script>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js?v=2";
+import { VRButton } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/webxr/VRButton.js?v=2";
+const hud = document.getElementById('hud'); function log(...a){ hud.textContent += "\n"+a.join(" "); }
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 500);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight); renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+try { document.body.appendChild(VRButton.createButton(renderer)); log("VRButton added ✔"); }
+catch(e){ log("VRButton error:", e?.message||e); }
+renderer.setAnimationLoop(()=>renderer.render(scene,camera));
+</script>
